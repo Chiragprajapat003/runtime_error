@@ -9,13 +9,35 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Swappable LLM Provider selection
+let llm;
+const provider = (process.env.LLM_PROVIDER || 'openai').toLowerCase();
+
+switch (provider) {
+  case 'gemini':
+    console.log('[Backend] Initializing Gemini LLM Provider.');
+    llm = new GeminiAdapter();
+    break;
+  case 'ollama':
+    console.log('[Backend] Initializing Ollama (Local) LLM Provider.');
+    llm = new OllamaAdapter();
+    break;
+  case 'openai':
+  default:
+    console.log('[Backend] Initializing OpenAI LLM Provider.');
+    llm = new OpenAIAdapter();
+    break;
+}
 
 const llm = new OpenAIAdapter();
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+  const activeModel = provider === 'ollama' ? (process.env.OLLAMA_MODEL || 'llama3') : (provider === 'gemini' ? 'gemini-1.5-flash' : 'gpt-4o-mini');
+  res.json({ status: 'ok', provider, model: activeModel, time: new Date().toISOString() });
 });
 
 // Grounded Query route
