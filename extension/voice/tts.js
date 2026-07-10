@@ -1,64 +1,74 @@
 /**
- * tts.js
+ * stt.js
  * 
- * Text-to-Speech client-side wrapper utilizing the Web Speech API's SpeechSynthesis.
- * Adapted from read-aloud references (MIT).
+ * Speech-to-Text client-side controller. Handles audio capture, Web Speech API SpeechRecognition,
+ * and transcription dispatch.
  */
 
-export class TTSController {
+export class STTController {
   constructor() {
-    this.synth = window.speechSynthesis;
-    this.utterance = null;
-    this.isPlaying = false;
-    this.queue = [];
-    this.currentIndex = 0;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.error('Web Speech API (SpeechRecognition) is not supported in this browser.');
+      this.recognition = null;
+      return;
+    }
+    
+    this.recognition = new SpeechRecognition();
+    this.recognition.continuous = false;
+    this.recognition.interimResults = true;
+    this.recognition.lang = 'en-US';
   }
 
-  speak(text, onBoundary, onEnd, onError) {
-    this.stop();
-    
-    if (!text) return;
-    
-    this.utterance = new SpeechSynthesisUtterance(text);
-    
-    // Configure voice properties
-    this.utterance.rate = 1.0;
-    this.utterance.pitch = 1.0;
-    
-    this.utterance.onboundary = (event) => {
-      if (onBoundary) onBoundary(event);
+  start(onResult, onEnd, onError) {
+    if (!this.recognition) {
+      if (onError) onError(new Error('SpeechRecognition not supported'));
+      return;
+    }
+
+    this.recognition.onresult = (event) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+
+      if (onResult) {
+        onResult({
+          interim: interimTranscript,
+          final: finalTranscript,
+          isFinal: finalTranscript.length > 0
+        });
+      }
     };
 
-    this.utterance.onend = (event) => {
-      this.isPlaying = false;
-      if (onEnd) onEnd(event);
+    this.recognition.onend = () => {
+      if (onEnd) onEnd();
     };
 
-    this.utterance.onerror = (event) => {
-      this.isPlaying = false;
+    this.recognition.onerror = (event) => {
       if (onError) onError(event);
     };
 
-    this.isPlaying = true;
-    this.synth.speak(this.utterance);
-  }
-
-  pause() {
-    if (this.synth && this.isPlaying) {
-      this.synth.pause();
-    }
-  }
-
-  resume() {
-    if (this.synth && this.isPlaying) {
-      this.synth.resume();
+    try {
+      this.recognition.start();
+    } catch (err) {
+      console.warn('STT start warning:', err);
     }
   }
 
   stop() {
-    if (this.synth) {
-      this.synth.cancel();
-      this.isPlaying = false;
+    if (this.recognition) {
+      try {
+        this.recognition.stop();
+      } catch (err) {
+        console.warn('STT stop warning:', err);
+      }
     }
   }
 }
